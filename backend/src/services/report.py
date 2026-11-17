@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from src.models.source import Source,Policy
 from src.models.run import Run
 from src.services.audit import log
+from src.services.ledger import post_original
 from src.config.settings import REDIS_URL
 import redis
 def submit(db,user,body):
@@ -21,4 +22,7 @@ def approve(db,user,id,note):
  if not obj: raise HTTPException(404,'报告不存在')
  if obj.status!='completed': raise HTTPException(409,'仅可复核已完成报告')
  if obj.approved: raise HTTPException(409,'报告已经复核')
- obj.approved=True;obj.review=note;log(db,user.email,'run.approve',id);db.commit();return obj
+ # 复核通过即首次入账：原账保留，同事务提交；幂等键保证重试不重复入账。
+ obj.approved=True;obj.review=note
+ post_original(db,obj,user)
+ log(db,user.email,'run.approve',id);db.commit();return obj
